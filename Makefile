@@ -1,0 +1,11 @@
+CC = gcc
+CFLAGS = -g -Wall
+SERVER_TARGET = chatserver
+
+all: $(SERVER_TARGET)
+
+$(SERVER_TARGET): $(SERVER_TARGET).c
+	$(CC) $(CFLAGS) -o $(SERVER_TARGET) $(SERVER_TARGET).c
+
+clean:
+	rm $(SERVER_TARGET)
