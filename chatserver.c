@@ -1,16 +1,12 @@
 #include<stdio.h>
-
 #include<arpa/inet.h>
-
 #include<string.h>
-
 #include<sys/socket.h>
-
 #include<stdlib.h>
-
 #include<sys/epoll.h>
-
 #include<errno.h>
+#include<fcntl.h>
+#include<unistd.h>
 
 # define MAX_CLIENTS 100
 # define BUFFER_SIZE 100
@@ -24,9 +20,26 @@ typedef struct conninfo {
 }
 Conninfo;
 
+void setnonblocking(int sock)
+{
+	int opts;
+	opts = fcntl(sock, F_GETFL);
+
+	if(opts < 0) {
+		perror("fcntl(sock, GETFL)");
+		exit(1);
+	}
+
+	opts = opts | O_NONBLOCK;
+
+	if(fcntl(sock, F_SETFL, opts) < 0) {
+		perror("fcntl(sock, SETFL, opts)");
+		exit(1);
+	}
+}
+
 int initserver(Conninfo * server) 
 {
-    memset(server, 0, sizeof(Conninfo));
     if ((server -> sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("Socket error\n");
         exit(EXIT_SUCCESS);
@@ -56,7 +69,7 @@ int initserver(Conninfo * server)
 
 int main(void) 
 {
-    struct epoll_event event, events[MAX_CLIENTS];
+    struct epoll_event event,events[3];
     puts("Starting server...");
     Conninfo server;
     Conninfo clients[MAX_CLIENTS];
@@ -64,38 +77,54 @@ int main(void)
         clients[i].sockfd = 0;
     }
     int sockfd = initserver( & server);
+    setnonblocking(sockfd);
+    char sendline[BUFFER_SIZE];
     int epollfd = epoll_create(0xbeef);
     event.data.fd = sockfd;
-    event.events = EPOLLIN | EPOLLOUT | EPOLLET;
-    if (epoll_ctl(epollfd, EPOLL_CTL_ADD, sockfd, & event) < 0) {
+    event.events = EPOLLIN | EPOLLET;
+    if (epoll_ctl(epollfd, EPOLL_CTL_ADD, sockfd, &event) < 0) {
         perror("Epoll error");
         exit(EXIT_SUCCESS);
     }
-    int fd, acceptfd;
+    int fd;
     for (;;) {
-        int nfds, i;
+        int nfds, i, newsockfd,n ;
         nfds = epoll_wait(epollfd, events, MAXEVENTS, -1);
         for (i = 0; i < nfds; i++) {
             fd = events[i].data.fd;
             if (fd == sockfd) {
-                printf("Listening\n");
-                socklen_t * addrlen = (socklen_t *) sizeof clients[i];
-                while (!((acceptfd = accept(sockfd, (struct sockaddr * ) & clients[i], addrlen)) < 0)) {
-                    printf("Accepted %s\n", inet_ntoa(clients[i].address.sin_addr));
-                    events[i].events = EPOLLIN | EPOLLOUT | EPOLLET;
-                    events[i].data.fd = acceptfd;
-                    if (epoll_ctl(epollfd, EPOLL_CTL_ADD, acceptfd, events) < 0) {
-                        perror("epoll_ctl: add");
-                        exit(EXIT_FAILURE);
-                    }
-                }
+                socklen_t addrlen = (socklen_t) sizeof clients[i].address;
+                int acceptfd = accept(sockfd, (struct sockaddr * ) & clients[i].address, &addrlen);
+                printf("Accepted %s\n", inet_ntoa(clients[i].address.sin_addr));
+                setnonblocking(acceptfd);
+                event.data.fd = acceptfd;
+				event.events = EPOLLIN;
+                epoll_ctl(epollfd, EPOLL_CTL_ADD, acceptfd, &event);
                 if (acceptfd < 0) {
                     if (errno != EAGAIN && errno != ECONNABORTED && errno != EPROTO && errno != EINTR)
                         perror("accept");
                 }
                 continue;
-            } else {
-                printf("not listening");
+            }
+            else if(events[i].events & EPOLLIN) {
+				if((newsockfd = events[i].data.fd) < 0) 
+				    continue;
+				if((n = read(newsockfd, sendline, BUFFER_SIZE)) < 0) {
+					if(errno == ECONNRESET) {
+						close(newsockfd);
+						events[i].data.fd = -1;
+					} else {
+						printf("readline error");
+					}
+				} else if(n == 0) {
+					perror("Epoll error");
+					events[i].data.fd = -1;
+				}
+				printf("received data: %s \n", sendline);
+				memset(sendline , 0 ,sizeof(sendline));
+			}
+			else {
+                write(sockfd, "server message", 10);
             }
         }
     }
