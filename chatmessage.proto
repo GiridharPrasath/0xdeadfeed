@@ -1,0 +1,18 @@
+syntax = "proto2";
+
+package chatApp;
+
+message Message{
+
+    enum Option{
+        LISTCLIENTS = 0;
+        CHAT = 1;
+        RESPONSE = 2;
+    }
+    required string sourceIp = 1;
+    optional string destIp = 2;
+    required string hostName = 4;
+    optional string textToSend = 5;
+    required int32 messageLength = 3;
+    optional Option opt = 6 [default = LISTCLIENTS];
+}
