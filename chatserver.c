@@ -7,6 +7,7 @@
 #include<errno.h>
 #include<fcntl.h>
 #include <stdbool.h>
+#include<unistd.h>
 
 # define MAX_CLIENTS 100
 # define BUFFER_SIZE 100
@@ -25,17 +26,17 @@ Conninfo *head;
 
 Conninfo* create_conn_info() {
     head = malloc(sizeof(Conninfo));
-    Conninfo* connect = malloc(sizeof(Conninfo));
-    if(connect != NULL) {
-        connect->next = NULL;
-        connect->prev = NULL;
+    if(head != NULL) {
+        head->next = NULL;
+        head->prev = NULL;
     }
-    return connect;
+    return head;
 }
 
 void add_conn_info(Conninfo** newconnect) {
     if(head == NULL) {
         head = create_conn_info();
+        (*newconnect) = head;
     }
     else {
     (*newconnect) = malloc(sizeof (Conninfo));
@@ -67,11 +68,11 @@ bool isconnected(Conninfo **cur, char *ip) {
     return false;
 }
 
-char *search_list(Conninfo *connect) {
+/*char *search_list(Conninfo *connect) {
 
-}
+}*/
 void printList(Conninfo *connect)  
-{  
+{ 
     while (connect != NULL)  
     {  
         printf("Connected %s \n",(inet_ntoa(connect->address.sin_addr)));
@@ -141,8 +142,7 @@ int main(void)
     Conninfo *clients;
     int sockfd = initserver( &server);
     setnonblocking(sockfd);
-    char sendline[BUFFER_SIZE], recvline[BUFFER_SIZE];
-    ssize_t n;
+    char sendline[BUFFER_SIZE];
     char *cliaddr; 
     int epollfd = epoll_create(0xbeef);
     event.data.fd = sockfd;
@@ -153,10 +153,10 @@ int main(void)
         exit(EXIT_SUCCESS);
     }
 
-    int fd, acceptfd;
+    int fd;
     
     for (;;) {
-        int nfds, i, newsockfd,n ;
+        int nfds, newsockfd,n ;
         nfds = epoll_wait(epollfd, events, MAXEVENTS, -1);
         for(int i =0;i<nfds;i++) {
         fd = events[i].data.fd;     
@@ -179,8 +179,7 @@ int main(void)
                 close(acceptfd);
                 continue;
             }
-            Conninfo *cur = clients;
-            printList(cur); 
+            printList(head); 
             printf("Accepted %s\n", inet_ntoa(clients->address.sin_addr));
             setnonblocking(acceptfd);
             event.data.fd = acceptfd;
