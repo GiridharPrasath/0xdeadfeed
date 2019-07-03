@@ -8,11 +8,15 @@
 #include<fcntl.h>
 #include <stdbool.h>
 #include<unistd.h>
+#include<iostream>
+#include "chatmessage.pb.h"
 
 # define MAX_CLIENTS 100
 # define BUFFER_SIZE 100
 # define PORT_NO 7000
 # define MAXEVENTS 128
+
+using namespace std; 
 
 typedef struct conninfo {
     char username[20];
@@ -22,11 +26,38 @@ typedef struct conninfo {
 }
 Conninfo;
 
+void PrintMessage(const chatApp::Message& msg) {
 
+    printf("reading....\n");
+
+    cout << "Host: " << msg.hostname() << " " << msg.sourceip() << endl;
+
+    if (msg.has_destip()) {
+        cout << "  Destination IP: " << msg.destip() << endl;
+    }
+
+    cout << "Message length: " << msg.messagelength() << endl;
+
+    switch (msg.opt()) {
+        case chatApp::Message::LISTCLIENTS:
+            cout << "  LISTCLIENTS ";
+            break;
+
+        case chatApp::Message::CHAT:
+            cout << "  CHAT ";
+            break;
+
+        case chatApp::Message::RESPONSE:
+            cout << "  RESPONSE ";
+            break;
+    }
+
+    cout << "Done" << endl;
+}
 Conninfo *head;
 
 Conninfo* create_conn_info() {
-    head = malloc(sizeof(Conninfo));
+    head = (Conninfo *) malloc(sizeof(Conninfo));
     if(head != NULL) {
         head->next = NULL;
         head->prev = NULL;
@@ -40,7 +71,7 @@ void add_conn_info(Conninfo** newconnect) {
         (*newconnect) = head;
     }
     else {
-    (*newconnect) = malloc(sizeof (Conninfo));
+    (*newconnect) = (Conninfo *)malloc(sizeof (Conninfo));
     (*newconnect)->next = head;
     (*newconnect)->prev = NULL;
     head->prev = (*newconnect);               
@@ -100,7 +131,8 @@ void setnonblocking(int sock)
 
 int initserver(Conninfo * server) 
 {
-
+    GOOGLE_PROTOBUF_VERIFY_VERSION;
+    
     int sockfd;
 
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
@@ -138,6 +170,7 @@ int initserver(Conninfo * server)
 int main(void) 
 {
 
+    chatApp::Message msg;
     head = NULL;
     struct epoll_event event,events[3];
     puts("Starting server...");
@@ -216,8 +249,11 @@ int main(void)
 				close(newsockfd);
 				continue;
 			}
-
-			printf("received data: %s\n", sendline);
+            if(!msg.ParseFromString(&sendline[BUFFER_SIZE])) {
+                perror("Failed to read from client");
+            }
+            PrintMessage(msg);
+			//printf("received data: %s\n", sendline);
 			memset(&sendline , 0 ,sizeof(sendline));
 		}
 		else if(events[i].events & EPOLLOUT){

@@ -95,7 +95,6 @@ void PrintMessage(const chatApp::Message& msg) {
 }
 
 int main(int argc, char*argv[]){
-
     if (gethostname(hostname,MAXBUF) < 0) {
         cerr << "Could not get host name" << endl;
         return 0;
