@@ -22,6 +22,7 @@ typedef struct conninfo {
 }
 Conninfo;
 
+
 Conninfo *head;
 
 Conninfo* create_conn_info() {
@@ -99,6 +100,7 @@ void setnonblocking(int sock)
 
 int initserver(Conninfo * server) 
 {
+
     int sockfd;
 
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
@@ -135,6 +137,7 @@ int initserver(Conninfo * server)
 
 int main(void) 
 {
+
     head = NULL;
     struct epoll_event event,events[3];
     puts("Starting server...");
@@ -152,6 +155,7 @@ int main(void)
         perror("Epoll error");
         exit(EXIT_SUCCESS);
     }
+
 
     int fd;
     
