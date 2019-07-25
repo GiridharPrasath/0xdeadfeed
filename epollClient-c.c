@@ -23,7 +23,7 @@
 #define header_size 16
 
 char    hostname[MAXBUF];
-char    *IP_ADDR, *peerIp, *activeClients;
+char    *IP_ADDR,*peerIp, *activeClients;
 struct  hostent *host_entry;
 struct  sockaddr_in addr,client;
 
@@ -216,7 +216,7 @@ handle_message (socket_cookie_t   *cookie,
     return 0;
 }
 
-static int
+    static int
 handle_message_on_read (socket_cookie_t *cookie, uint16_t epfd)
 {
     assert(cookie);
@@ -289,7 +289,6 @@ int check_connection(uint8_t sockfd){
         }
             return -1;
     } 
-    printf("Connected to server!\n");
     return 1;
 }
 
@@ -304,10 +303,13 @@ int main(int argc, char*argv[]){
         return 0;
     }
     IP_ADDR = inet_ntoa(*((struct in_addr*) host_entry->h_addr_list[0])); 
-
+    
+    struct      sockaddr peer_addr;
     struct      epoll_event events[4];
     struct      epoll_event stdin_ev = {0};
 
+    socklen_t   peer_addr_len;
+    
     uint8_t     sockfd,connfd,i;
     uint8_t     id = getpid();
     uint16_t    epfd = epoll_create(10);
@@ -316,6 +318,7 @@ int main(int argc, char*argv[]){
     uint_fast8_t        buffer[MAXBUF];
     void                *buf;
 
+    peer_addr_len = sizeof(peer_addr);
     socket_cookie_t     stdin_cookie, socket_cookie;
     memset(&stdin_cookie, 0, sizeof(stdin_cookie));
 
@@ -337,8 +340,8 @@ int main(int argc, char*argv[]){
 
     addr.sin_family = AF_INET;
     addr.sin_port   = htons(PORT);
-    inet_pton(AF_INET, "10.145.0.245", &addr.sin_addr); 
-    //inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr); 
+    //inet_pton(AF_INET, "10.145.0.245", &addr.sin_addr); 
+    inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr); 
 
     if ((connfd = connect(sockfd,(struct sockaddr*)&addr,sizeof(addr))) < 0) {
         printf("Connection error \n Client couldn't connect.\n");
@@ -361,27 +364,12 @@ int main(int argc, char*argv[]){
         check_connection_reset(sockfd, epfd);
         printf("Enter your option \n 1.List all clients \n 2.Chat \n");
         uint8_t nready = epoll_wait(epfd,events,5,10000);
+        
         for (uint8_t k = 0; k < nready; k++) {
             socket_cookie_t *cookie = (typeof(cookie))events[k].data.ptr;
             printf(" ready fd is: %d\n",cookie->fd);
-            if (events[k].events & EPOLLHUP){
-                printf("SERVER SHUTDOWN \n");
-                exit(1);
-            }
-            if (cookie->fd == sockfd) {
-                if(events[k].events & EPOLLOUT){
-                    int conn_status = check_connection(sockfd);
-                    if (conn_status){
-                        /* connected */
-                        sock_event.events = EPOLLIN;
-                        epoll_ctl(epfd, EPOLL_CTL_MOD, sockfd,&sock_event);
-                    }
-                    printf("Connection broke\n");
-                    exit(1);
-                }
-
-            } else if (((socket_cookie_t *)events[k].data.ptr)->fd == 0) {
-                /* stdin is ready */
+            if (((socket_cookie_t *)events[k].data.ptr)->fd == 0) {
+                /*  stdin is ready */
                 int conn_status = check_connection(sockfd);
                 if(!conn_status){
                     printf("conneciton pending...\n");
@@ -426,9 +414,16 @@ int main(int argc, char*argv[]){
                 ((socket_cookie_t *)events[k].data.ptr)->pending_write_buffer_len = total_len;
 
                 uint8_t sentbytes,w_counter = 0; 
+                int epoll_ret;
                 do{
                     sock_event.events |= EPOLLOUT;
-                    epoll_ctl(epfd, EPOLL_CTL_MOD, sockfd, &sock_event);
+                    if((epoll_ret = epoll_ctl(epfd, EPOLL_CTL_MOD, sockfd, &sock_event)) < 0){
+                        printf("entered\n");
+                        if(errno == ENOENT){
+                            printf("Socket has closed!\n");
+                            exit(1);
+                        }
+                    }
 
                     sentbytes = write(sockfd, cookie->pending_write_buffer, cookie->pending_write_buffer_len);
                     if(sentbytes < 0){
@@ -457,7 +452,12 @@ int main(int argc, char*argv[]){
                 } while(errno == EAGAIN);
 
                 sock_event.events = EPOLLIN;
-                epoll_ctl(epfd, EPOLL_CTL_MOD, sockfd, &sock_event);
+                if((epoll_ret = epoll_ctl(epfd, EPOLL_CTL_MOD, sockfd, &sock_event)) < 0){
+                    if(errno == ENOENT){
+                        printf("Socket closed already!\n");
+                        exit(1);
+                    }
+                }
 
                 ((socket_cookie_t *)events[k].data.ptr)->pending_write_buffer            = 0;
                 if (sentbytes < 0) {
@@ -472,6 +472,23 @@ int main(int argc, char*argv[]){
                 //close(cookie->fd);
             } else {
                 //socket is ready
+                printf("Ready fd is socket fd\n");
+                if (events[k].events & EPOLLHUP){
+                    printf("SERVER SHUTDOWN \n");
+                    exit(1);
+                }
+                if(events[k].events & EPOLLOUT){
+                    int conn_status = check_connection(sockfd);
+                    if (conn_status){
+                        /* connected */
+                        printf("CONNECTED TO SERVER\n");
+                        sock_event.events = EPOLLIN;
+                        epoll_ctl(epfd, EPOLL_CTL_MOD, sockfd,&sock_event);
+                    }else{
+                        printf("Connection broke\n");
+                        exit(1);
+                    }
+                }
                 if (events[k].events & EPOLLIN) {
                     uint8_t          nbytes;
                     uint8_t          temp_buffer[MAXBUF];
@@ -500,9 +517,9 @@ int main(int argc, char*argv[]){
                             if (errno == EWOULDBLOCK){
                                 printf("Socket is readable but nothing reieved");
                             }
-                            printf("Server terminated\n");
+                            printf("SERVER TERMINATED\n");
                             epoll_ctl(epfd, EPOLL_CTL_DEL, cookie->fd, NULL);
-                            break;
+                            exit(1);
                         }
                     } while(nbytes > 0);
                 }
