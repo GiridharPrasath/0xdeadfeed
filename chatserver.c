@@ -23,6 +23,7 @@ typedef enum message_type_e {
 
 typedef struct conninfo {
     char    username[20];
+    int     acceptfd;
     struct  sockaddr_in address;
 
     struct  conninfo *next;
@@ -66,7 +67,7 @@ static Conninfo* create_conn_info()
 }
 
 static void add_conn_info(Conninfo** newconnect) 
-{    
+{
     if(head == NULL) {
         head = create_conn_info();
         (*newconnect) = head;
@@ -74,10 +75,9 @@ static void add_conn_info(Conninfo** newconnect)
 
     else {
         (*newconnect) = (Conninfo *)malloc(sizeof (Conninfo));
-        (*newconnect)->next = head;
-        (*newconnect)->prev = NULL;
-        head->prev = (*newconnect);               
-        head = (*newconnect);
+        head->next = (*newconnect);
+        (*newconnect)->prev = head;
+        (*newconnect)->next = NULL;               
     }
 }
 
@@ -90,7 +90,7 @@ static void delete_conn_info(Conninfo **head, Conninfo **del)
     if ((*head) == (*del)) {
         (*head) = (*del)->next;  
     }
-    
+
     if ((*del)->next != NULL) {
         (*del)->next->prev = (*del)->prev;  
     }
@@ -98,13 +98,13 @@ static void delete_conn_info(Conninfo **head, Conninfo **del)
     if ((*del)->prev != NULL) {
         (*del)->prev->next = (*del)->next;  
     }
-    
+
     free((*del));
     return;   
-} 
+}
 
 static bool isconnected(Conninfo **cur, 
-        char *ip) 
+        char      *ip) 
 {    
     while((*cur)->next != NULL) {
 
@@ -118,7 +118,15 @@ static bool isconnected(Conninfo **cur,
 
     return false;
 }
-
+static Conninfo *check_del_clients(int acceptfd) {
+    Conninfo *temp = head;
+    while(temp!= NULL) {
+        if(temp->acceptfd == acceptfd) {
+            return temp;
+        }
+        temp = temp->next;
+    }
+}
 static void setnonblocking(int sock)
 {
 	int opts;
@@ -126,49 +134,60 @@ static void setnonblocking(int sock)
 
 	if(opts < 0) {
 		perror("fcntl(sock, GETFL)");
-		exit(1);
 	}
 
 	opts = opts | O_NONBLOCK;
 
 	if(fcntl(sock, F_SETFL, opts) < 0) {
 		perror("fcntl(sock, SETFL, opts)");
-		exit(1);
 	}
+}
+
+static void check_non_blocking(int sock)
+{
+    int opts;
+    opts = fcntl(sock, F_GETFL);
+
+    if(opts < 0) {
+        perror("fcntl(sock, GETFL)");
+    }
+
+    if(opts & O_NONBLOCK) {
+        setnonblocking(sock);
+    }
+    return;
 }
 
 static char* printList()  
 {   
     Conninfo *connect = head;
-    int len = 0;
-    char *ip;
+    int      len      = 0;
+    char     *ip;
     while (connect != NULL)  
     {  
-        len = len + strlen(inet_ntoa(connect->address.sin_addr)) + 1;
+        len = len + strlen(inet_ntoa(connect->address.sin_addr));
         connect = connect->next;
     }
     connect = head;
-    ip = malloc(len);
+    ip = malloc(len+1);
     while(connect != NULL) {
         strcat(ip, inet_ntoa(connect->address.sin_addr));
         connect = connect -> next;
+        strcat(ip, "\n");
     }
+    strcat(ip, "\0");
     return ip;
 }  
 
 
-static void pack_message(ChatApp__Message* r_msg, const ChatApp__Message *msg) {
-    uint8_t size,option;
+static void 
+pack_message(ChatApp__Message* r_msg, 
+        const ChatApp__Message *msg) 
+{
     char szHostName[255];
-    struct hostent *host_entry;
 
     gethostname(szHostName, 255);
-    host_entry=gethostbyname(szHostName);
-    char * szLocalIP;
-    //szLocalIP = inet_ntoa (*((struct in_addr *)*host_entry->h_addr_list[0]));
-    //printf("got hostbyname %s\n",szHostName);
-    r_msg->hostname = "giri";
-
+    r_msg->hostname = szHostName;
     if(msg->has_opt) {
 
         switch(msg->opt) {
@@ -183,14 +202,21 @@ static void pack_message(ChatApp__Message* r_msg, const ChatApp__Message *msg) {
                 r_msg->texttosend = msg->texttosend;
                 r_msg->sourceip = msg->destip;
                 break;
+
+            default:
+                break;
         }
     }
+
     r_msg->messagelength = strlen(r_msg->texttosend);
-    r_msg->has_opt = 1;
-    r_msg->opt = CHAT_APP__MESSAGE__OPTION__RESPONSE;
+    r_msg->has_opt       = 1;
+    r_msg->opt           = CHAT_APP__MESSAGE__OPTION__RESPONSE;
+    free(r_msg->texttosend);
+    return ;
 }
 
-static void handle_msg_write(socket_cookie_t    *cookie, 
+    static void 
+handle_msg_write(socket_cookie_t    *cookie, 
         ChatApp__Message    msg , 
         int                 epollfd, 
         struct epoll_event  sock_event,
@@ -211,7 +237,6 @@ static void handle_msg_write(socket_cookie_t    *cookie,
     /* adding message header */
     void      *send_buf;
     uint16_t  total_len = header_size + len;
-    uint8_t   counter   = 0;
     send_buf = malloc(total_len);
 
     memset(&message_header, 0, header_size);
@@ -233,7 +258,7 @@ static void handle_msg_write(socket_cookie_t    *cookie,
 
     cookie->pending_write_buffer_len = total_len;
 
-    uint8_t sentbytes,w_counter = 0; 
+    uint8_t sentbytes = 0; 
 
     do{
         sock_event.events |= EPOLLOUT;
@@ -277,7 +302,8 @@ static void handle_msg_write(socket_cookie_t    *cookie,
 }
 
 
-static void PrintMessage(const ChatApp__Message* msg) {
+static void 
+PrintMessage(const ChatApp__Message* msg) {
 
     if (msg->destip != NULL) {
         printf("Destination IP: %s\n",msg->destip);
@@ -311,7 +337,8 @@ static void PrintMessage(const ChatApp__Message* msg) {
 
 }
 
-static void unpack_header(uint8_t           *buffer,
+    static void 
+unpack_header(uint8_t           *buffer,
         uint32_t           len,
         message_header_t  *header )
 {
@@ -341,12 +368,13 @@ static void unpack_header(uint8_t           *buffer,
     printf("recv %d \n", header->receiver_id);
 }
 
-static uint8_t handle_message(socket_cookie_t    *cookie,
-                              uint8_t            *buffer,
-                              uint32_t            buffer_len,
-                              int                 epollfd,
-                              struct epoll_event  event,
-                              int                 sockfd) 
+    static uint8_t 
+handle_message(socket_cookie_t    *cookie,
+        uint8_t            *buffer,
+        uint32_t            buffer_len,
+        int                 epollfd,
+        struct epoll_event  event,
+        int                 sockfd) 
 {
     message_header_t header;
     unpack_header(buffer, sizeof(message_header_t), &header);
@@ -375,8 +403,12 @@ static uint8_t handle_message(socket_cookie_t    *cookie,
     return 0;
 }
 
-static int unpack_message(socket_cookie_t *cookie, int epollfd, struct epoll_event event, int sockfd) {
-
+    static int 
+unpack_message(socket_cookie_t *cookie, 
+        int epollfd, 
+        struct epoll_event event,
+        int sockfd) 
+{
     message_header_t    header_obj;
     uint32_t            n_msg;
     uint8_t             retval;
@@ -401,7 +433,7 @@ static int unpack_message(socket_cookie_t *cookie, int epollfd, struct epoll_eve
             free(cookie->pending_read_buffer);        
             cookie->pending_read_buffer_len = 0;    
         }
-        
+
         else {
             memmove(cookie->pending_read_buffer,
                     cookie->pending_read_buffer + header_obj.len + sizeof(header_obj.len),
@@ -421,10 +453,8 @@ static int unpack_message(socket_cookie_t *cookie, int epollfd, struct epoll_eve
             else {
                 cookie->pending_read_buffer  = temp_buf;
             }
-
             cookie->pending_read_buffer_len -= header_obj.len + sizeof(header_obj); 
         }
-
     } while(cookie->pending_read_buffer > 0);
 
     return n_msg;
@@ -441,11 +471,11 @@ static int initserver(Conninfo * server)
     }
 
     printf("Socket Created\n");
-    server -> address.sin_family = AF_INET;
-    server -> address.sin_addr.s_addr = INADDR_ANY;
-    server -> address.sin_port = htons(PORT_NO);
+    server -> address.sin_family        = AF_INET;
+    server -> address.sin_addr.s_addr   = INADDR_ANY;
+    server -> address.sin_port          = htons(PORT_NO);
 
-    int val = 1;
+    int val          = 0x1;
     socklen_t vallen = sizeof(val);
 
     if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (void * ) & val, vallen) < 0) {
@@ -458,7 +488,7 @@ static int initserver(Conninfo * server)
         exit(EXIT_SUCCESS);
     }
 
-    if (listen(sockfd, 5) < 0) {
+    if (listen(sockfd, MAX_CLIENTS) < 0) {
         perror("Listen error");
         exit(EXIT_SUCCESS);
     }
@@ -478,17 +508,17 @@ int main(void)
     puts("Starting server...");
     Conninfo server;
     Conninfo *clients;
-    char *recvbuf;
+
     int epollfd = epoll_create(0xbeef);
     int sockfd  = initserver( &server);
 
     setnonblocking(sockfd);
+    check_non_blocking(sockfd);
 
-    char *cliaddr; 
-    socket_cookie_t socket_c;
-    socket_c.fd     = sockfd;
-    event.data.ptr  = &socket_c;
-    event.events    = EPOLLIN | EPOLLET;
+    socket_cookie_t temp_socket_c;
+    temp_socket_c.fd     = sockfd;
+    event.data.ptr       = &temp_socket_c;
+    event.events         = EPOLLIN | EPOLLET;
 
     if (epoll_ctl(epollfd, EPOLL_CTL_ADD, sockfd, &event) < 0) {
         perror("Epoll error");
@@ -501,10 +531,9 @@ int main(void)
 
     for (;;) {
 
-        int nfds, newsockfd,offset ;
+        int nfds;
         nfds = epoll_wait(epollfd, events, MAXEVENTS, -1);
-        printf("ready fds %d\n", nfds);
-        
+
         for(int i =0; i < nfds;i++) {
 
             fd = ((socket_cookie_t *)events[i].data.ptr)->fd;      
@@ -513,16 +542,19 @@ int main(void)
             if (fd == sockfd) {
 
                 add_conn_info(&clients);
+                socklen_t addrlen         = (socklen_t) sizeof(const struct sockaddr_in);
+                acceptfd                  = accept(sockfd, 
+                        (struct sockaddr *)&clients->address, 
+                        &addrlen);    
 
-                socklen_t addrlen = (socklen_t) sizeof(const struct sockaddr_in);
-                acceptfd          = accept(sockfd, 
-                        (struct sockaddr * ) & clients->address, &addrlen);    
-
+                clients->acceptfd = acceptfd;
+                printf("acceptfd is clients %d\n", clients->acceptfd);
                 if(acceptfd < 0) {
                     perror("Accept failed\n");
                     continue;
                 }
 
+                char *cliaddr; 
                 cliaddr = inet_ntoa(clients->address.sin_addr);
 
                 /*    if(isconnected(&clients, cliaddr)) {
@@ -531,8 +563,10 @@ int main(void)
                       close(acceptfd);
                       continue;
                       } */
+
                 printf("Accepted %s\n", inet_ntoa(clients->address.sin_addr));
                 setnonblocking(acceptfd);
+                check_non_blocking(acceptfd);
 
                 sock_cookie[acceptfd].fd                 = acceptfd;
                 event.data.ptr                           = sock_cookie + acceptfd ;
@@ -551,15 +585,15 @@ int main(void)
 
             else if(events[i].events & EPOLLIN) {
 
-                int total_len = sizeof(message_header_t);
-
                 ((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer     = (uint8_t *)malloc(BUFFER_SIZE);
                 ((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer_len = 0;
 
+                int offset;
+
 			    do {
 			        offset = read(((socket_cookie_t *)events[i].data.ptr)  -> fd,
-			                      ((socket_cookie_t *)events[i].data.ptr)        -> pending_read_buffer, 
-			                        BUFFER_SIZE);
+			                ((socket_cookie_t *)events[i].data.ptr)        -> pending_read_buffer, 
+			                BUFFER_SIZE);
                     printf("Length is %d \n", offset);
 
 
@@ -568,19 +602,13 @@ int main(void)
 			        }
 
 			        if(errno == ECONNRESET || errno == EPOLLERR || errno == EPOLLHUP) {
-					    printf("Disconnected from %s\n", inet_ntoa(clients->address.sin_addr));
-					    delete_conn_info(&head, &clients);
-					    break;
+					    goto free_blk;
 				    }
 
 			        if(offset == 0) {
-				        printf("Disconnected from %s\n", inet_ntoa(clients->address.sin_addr));
-		                delete_conn_info(&head, &clients);
-				        close(((socket_cookie_t *)events[i].data.ptr)->fd);
-				        break;
+			            goto free_blk;
 			        } 
 
-                    printf("Length is %d \n", offset);
                     ((socket_cookie_t *)events[i].data.ptr)->pending_read_buffer_len     += offset;
 
 			        uint8_t *tmp =  (uint8_t *)realloc(((socket_cookie_t *)events[i].data.ptr)->pending_read_buffer, 
@@ -588,23 +616,27 @@ int main(void)
 
                     if(tmp == NULL) {
                         printf("realloc fail \n");
+                        epoll_ctl(epollfd, EPOLL_CTL_DEL, ((socket_cookie_t *) events[i].data.ptr)->fd, NULL);
+                        free(((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer);
                         break;
                     }
-                    else {
-                        ((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer  =  tmp;
-                    }
+                    ((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer  =  tmp;
 
 			        uint32_t        retmsgval;
 			        socket_cookie_t *cookie = ((socket_cookie_t *)events[i].data.ptr);
 			        printf("Length of pending read buffer len is %d \n", cookie->pending_read_buffer_len);
                     retmsgval               = unpack_message(cookie, epollfd, events[i], sockfd);
-
                     ((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer +=  offset;
 
+                   free_blk:
+		            printf("Disconnected from %s\n", inet_ntoa(clients->address.sin_addr));
+		            Conninfo *temp = check_del_clients(((socket_cookie_t *)events[i].data.ptr)->fd);
+		            delete_conn_info(&head, &temp);
+				    close(((socket_cookie_t *)events[i].data.ptr)->fd);
+				    break;
+
 			    } while(((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer_len > 0);
-
             }
-
         }
     }   
 }

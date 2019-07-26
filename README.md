@@ -10,5 +10,7 @@ chat app created in C using epoll i/o multiplexing.
 
 `./chatserver`
 
+`./chatclient`
+
 # WORK IN PROGRESS
 
