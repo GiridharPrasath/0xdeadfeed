@@ -119,6 +119,7 @@ static bool isconnected(Conninfo **cur,
 
     return false;
 }
+
 static Conninfo *check_del_clients(int acceptfd) 
 {
     Conninfo *temp = head;
@@ -131,7 +132,9 @@ static Conninfo *check_del_clients(int acceptfd)
         
         temp = temp->next;
     }
+    return NULL;
 }
+
 static void setnonblocking(int sock)
 {
 	int opts;
@@ -163,14 +166,26 @@ static void check_non_blocking(int sock)
     return;
 }
 
+static int searchlist(char *ip) 
+{
+    Conninfo *connect = head;
+    
+    while(connect != NULL) {
+        if(!strcmp(ip, inet_ntoa(connect->address.sin_addr))){
+            return connect->acceptfd;
+        }
+        connect = connect -> next;
+    }
+    return 0;
+}
+
 static char* printList()  
 {   
     Conninfo *connect = head;
     int      len      = 0;
     char     *ip;
     
-    while (connect != NULL)  
-    {  
+    while (connect != NULL) {  
         len    += strlen(inet_ntoa(connect->address.sin_addr));
         connect = connect->next;
         len++;
@@ -191,8 +206,8 @@ static char* printList()
 
 
 static void 
-pack_message(ChatApp__Message* r_msg, 
-        const ChatApp__Message *msg) 
+pack_message(ChatApp__Message  *r_msg, 
+             ChatApp__Message  *msg) 
 {
     char szHostName[255];
 
@@ -204,14 +219,16 @@ pack_message(ChatApp__Message* r_msg,
         switch(msg->opt) {
 
             case CHAT_APP__MESSAGE__OPTION__LISTCLIENTS:
-                r_msg->texttosend = printList();
+                r_msg->texttosend   = printList();
                 printf("IP LIST %s", r_msg->texttosend);
-                r_msg->sourceip = "127.0.0.1";
+                r_msg->sourceip     = "127.0.0.1";
+                r_msg->opt          = CHAT_APP__MESSAGE__OPTION__LISTCLIENTS;
                 break;
 
             case CHAT_APP__MESSAGE__OPTION__CHAT:
-                r_msg->texttosend = msg->texttosend;
-                r_msg->sourceip = msg->destip;
+                r_msg->texttosend   = msg->texttosend;
+                r_msg->sourceip     = msg->destip;
+                r_msg->opt          = CHAT_APP__MESSAGE__OPTION__CHAT;
                 break;
 
             default:
@@ -221,17 +238,16 @@ pack_message(ChatApp__Message* r_msg,
 
     r_msg->messagelength = strlen(r_msg->texttosend);
     r_msg->has_opt       = 1;
-    r_msg->opt           = CHAT_APP__MESSAGE__OPTION__RESPONSE;
     //free(r_msg->texttosend);
     return ;
 }
 
     static void 
 handle_msg_write(socket_cookie_t    *cookie, 
-        ChatApp__Message    msg , 
-        int                 epollfd, 
-        struct epoll_event  sock_event,
-        int                 sockfd)
+        ChatApp__Message     msg , 
+        int                  epollfd, 
+        struct epoll_event   sock_event,
+        int                  sockfd)
 {
     int len;
     void *buf = NULL;
@@ -241,13 +257,15 @@ handle_msg_write(socket_cookie_t    *cookie,
     chat_app__message__pack(&msg,buf);  
     fprintf(stderr,"Writing %d serialized bytes to buffer\n",len); // See the length of message
     fwrite(buf,len,1,stdout);
-    printf("\nMessage recorded as '%s'.\n", msg.texttosend);
-
+    
+    /** '\0' '\n' remove from the packed message**/ 
+    msg.sourceip[strlen(msg.sourceip) - 1] = 0;
+    msg.sourceip[strlen(msg.sourceip) - 1] = 0;
     message_header_t message_header;
     uint32_t header_size = sizeof(message_header);
     /* adding message header */
-    void      *send_buf = NULL;
-    uint16_t  total_len = header_size + len;
+    void      *send_buf  = NULL;
+    uint16_t   total_len = header_size + len;
     send_buf = realloc(send_buf, total_len);
 
     memset(&message_header, 0, header_size);
@@ -268,27 +286,41 @@ handle_msg_write(socket_cookie_t    *cookie,
     memcpy(cookie->pending_write_buffer, send_buf, total_len);
 
     cookie->pending_write_buffer_len = total_len;
-    printf("TOTAL WRITE MESSAGE SIZE IS %d\n", total_len);
     uint8_t sentbytes = 0; 
-
-    sock_event.events |= EPOLLOUT;
-    epoll_ctl(epollfd, EPOLL_CTL_MOD, cookie->fd, &sock_event);
     
     do{
-        sentbytes = write(cookie->fd, cookie->pending_write_buffer, cookie->pending_write_buffer_len);
-        printf("COOKIE FD IS %d\n",cookie->fd); 
-        printf("TOTAL SEND BYTES SIZE IS %d\n", total_len);
+        if(!msg.has_opt) {
+            perror("message pack error\n");
+            break;
+        }
         
+        if(msg.opt == CHAT_APP__MESSAGE__OPTION__LISTCLIENTS) {
+            sentbytes = write(cookie->fd, cookie->pending_write_buffer, cookie->pending_write_buffer_len);
+        }
+        
+        else {
+            int accept;
+            if((accept = searchlist(msg.sourceip)) != 0) {
+                sentbytes = write(accept, cookie->pending_write_buffer, cookie->pending_write_buffer_len);
+            }
+            else {
+                puts("IP NOT FOUND\n");
+                break;
+            }
+        }
+
         if(sentbytes < 0){
             break;
         }
 
-        if(sentbytes >= cookie->pending_write_buffer_len){
+        if(sentbytes >= cookie->pending_write_buffer_len) { 
             free(cookie->pending_write_buffer);
             cookie->pending_write_buffer_len = 0;
             break;
         } 
-        else{
+        
+        else 
+        {
             cookie->pending_write_buffer_len   -= sentbytes;       
 
             memmove(cookie->pending_write_buffer,
@@ -398,7 +430,7 @@ handle_message(socket_cookie_t    *cookie,
     unpack_header(buffer, sizeof(message_header_t), &header);
     ChatApp__Message *r_msg;
     ChatApp__Message  s_msg = CHAT_APP__MESSAGE__INIT;
-    printf("buffer len %d \n", buffer_len);
+    printf("buffer len %d \n", header.len);
     
     if((r_msg = chat_app__message__unpack(NULL, header.len, buffer + sizeof(header))) == NULL) {
         fprintf(stderr, "error unpacking message\n");           
@@ -436,7 +468,6 @@ unpack_message(socket_cookie_t *cookie,
     do{
     
         if(cookie->pending_read_buffer_len < sizeof(header_obj.len)) {
-            printf("unpack message header error\n");
             return 0;
         }
 
@@ -573,7 +604,6 @@ int main(void)
                         &addrlen);    
 
                 clients->acceptfd = acceptfd;
-                printf("acceptfd is clients %d\n", clients->acceptfd);
                 if(acceptfd < 0) {
                     perror("Accept failed\n");
                     continue;
@@ -630,8 +660,6 @@ int main(void)
 				    }
 
 			        if(offset == 0){
-			            printf("NOPE HERE");
-			        
 			            goto free_blk;
 			        } 
 
@@ -649,7 +677,6 @@ int main(void)
 
 			        uint32_t        retmsgval;
 			        socket_cookie_t *cookie = ((socket_cookie_t *)events[i].data.ptr);
-			        printf("Length of pending read buffer len is %d \n", cookie->pending_read_buffer_len);
                     retmsgval               = unpack_message(cookie, epollfd, events[i], sockfd);
                     ((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer +=  offset;
 
