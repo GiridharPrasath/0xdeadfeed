@@ -406,7 +406,7 @@ handle_message(socket_cookie_t    *cookie,
     }
 
     PrintMessage(r_msg);
-    pack_message(&s_msg, r_msg, cookie);
+    pack_message(&s_msg, r_msg);
     handle_msg_write(cookie, s_msg, epollfd, event, sockfd); 
 
     if(r_msg -> opt == CHAT_APP__MESSAGE__OPTION__LISTCLIENTS) {
