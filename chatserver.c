@@ -19,11 +19,13 @@
 typedef enum message_type_e {
     LIVE_USER_BROADCAST = 1,
     P2P_MESSAGE         = 2,
-} message_type_t;
+} 
+message_type_t;
 
 typedef struct conninfo {
     char    username[20];
     int     acceptfd;
+    
     struct  sockaddr_in address;
 
     struct  conninfo *next;
@@ -47,16 +49,15 @@ typedef struct socket_cookie_s {
     uint32_t     pending_read_buffer_len;
 
     uint8_t     *pending_write_buffer;
-    uint32_t    pending_write_buffer_len;
+    uint32_t     pending_write_buffer_len;
 }
 socket_cookie_t;
-
 
 Conninfo *head;
 
 static Conninfo* create_conn_info() 
 {
-    head = (Conninfo *) malloc(sizeof(Conninfo));
+    head = malloc(sizeof(Conninfo));
 
     if(head != NULL) {
         head->next = NULL;
@@ -74,7 +75,7 @@ static void add_conn_info(Conninfo** newconnect)
     }
 
     else {
-        (*newconnect) = (Conninfo *)malloc(sizeof (Conninfo));
+        (*newconnect) = malloc(sizeof (Conninfo));
         head->next = (*newconnect);
         (*newconnect)->prev = head;
         (*newconnect)->next = NULL;               
@@ -118,12 +119,16 @@ static bool isconnected(Conninfo **cur,
 
     return false;
 }
-static Conninfo *check_del_clients(int acceptfd) {
+static Conninfo *check_del_clients(int acceptfd) 
+{
     Conninfo *temp = head;
+   
     while(temp!= NULL) {
+     
         if(temp->acceptfd == acceptfd) {
             return temp;
         }
+        
         temp = temp->next;
     }
 }
@@ -163,18 +168,23 @@ static char* printList()
     Conninfo *connect = head;
     int      len      = 0;
     char     *ip;
+    
     while (connect != NULL)  
     {  
-        len = len + strlen(inet_ntoa(connect->address.sin_addr));
+        len    += strlen(inet_ntoa(connect->address.sin_addr));
         connect = connect->next;
+        len++;
     }
+    
     connect = head;
     ip = malloc(len+1);
+    
     while(connect != NULL) {
         strcat(ip, inet_ntoa(connect->address.sin_addr));
         connect = connect -> next;
         strcat(ip, "\n");
     }
+    
     strcat(ip, "\0");
     return ip;
 }  
@@ -188,6 +198,7 @@ pack_message(ChatApp__Message* r_msg,
 
     gethostname(szHostName, 255);
     r_msg->hostname = szHostName;
+    
     if(msg->has_opt) {
 
         switch(msg->opt) {
@@ -211,7 +222,7 @@ pack_message(ChatApp__Message* r_msg,
     r_msg->messagelength = strlen(r_msg->texttosend);
     r_msg->has_opt       = 1;
     r_msg->opt           = CHAT_APP__MESSAGE__OPTION__RESPONSE;
-    free(r_msg->texttosend);
+    //free(r_msg->texttosend);
     return ;
 }
 
@@ -223,9 +234,9 @@ handle_msg_write(socket_cookie_t    *cookie,
         int                 sockfd)
 {
     int len;
-    void *buf;
+    void *buf = NULL;
     len = chat_app__message__get_packed_size(&msg);
-    buf = malloc(len);
+    buf = realloc(buf, len);
 
     chat_app__message__pack(&msg,buf);  
     fprintf(stderr,"Writing %d serialized bytes to buffer\n",len); // See the length of message
@@ -235,9 +246,9 @@ handle_msg_write(socket_cookie_t    *cookie,
     message_header_t message_header;
     uint32_t header_size = sizeof(message_header);
     /* adding message header */
-    void      *send_buf;
+    void      *send_buf = NULL;
     uint16_t  total_len = header_size + len;
-    send_buf = malloc(total_len);
+    send_buf = realloc(send_buf, total_len);
 
     memset(&message_header, 0, header_size);
 
@@ -257,21 +268,25 @@ handle_msg_write(socket_cookie_t    *cookie,
     memcpy(cookie->pending_write_buffer, send_buf, total_len);
 
     cookie->pending_write_buffer_len = total_len;
-
+    printf("TOTAL WRITE MESSAGE SIZE IS %d\n", total_len);
     uint8_t sentbytes = 0; 
 
+    sock_event.events |= EPOLLOUT;
+    epoll_ctl(epollfd, EPOLL_CTL_MOD, cookie->fd, &sock_event);
+    
     do{
-        sock_event.events |= EPOLLOUT;
-        epoll_ctl(epollfd, EPOLL_CTL_MOD, sockfd, &sock_event);
-
-        sentbytes = write(sockfd, cookie->pending_write_buffer, cookie->pending_write_buffer_len);
-
+        sentbytes = write(cookie->fd, cookie->pending_write_buffer, cookie->pending_write_buffer_len);
+        printf("COOKIE FD IS %d\n",cookie->fd); 
+        printf("TOTAL SEND BYTES SIZE IS %d\n", total_len);
+        
         if(sentbytes < 0){
             break;
         }
 
-        if(sentbytes == cookie->pending_write_buffer_len){
+        if(sentbytes >= cookie->pending_write_buffer_len){
             free(cookie->pending_write_buffer);
+            cookie->pending_write_buffer_len = 0;
+            break;
         } 
         else{
             cookie->pending_write_buffer_len   -= sentbytes;       
@@ -297,7 +312,10 @@ handle_msg_write(socket_cookie_t    *cookie,
             }
         }
 
-    } while(errno == EAGAIN);
+    } while(cookie->pending_write_buffer_len > 0);
+    
+    sock_event.events |= EPOLLIN;
+    epoll_ctl(epollfd, EPOLL_CTL_MOD, cookie->fd, &sock_event);
 
 }
 
@@ -368,7 +386,7 @@ unpack_header(uint8_t           *buffer,
     printf("recv %d \n", header->receiver_id);
 }
 
-    static uint8_t 
+static uint8_t 
 handle_message(socket_cookie_t    *cookie,
         uint8_t            *buffer,
         uint32_t            buffer_len,
@@ -381,13 +399,14 @@ handle_message(socket_cookie_t    *cookie,
     ChatApp__Message *r_msg;
     ChatApp__Message  s_msg = CHAT_APP__MESSAGE__INIT;
     printf("buffer len %d \n", buffer_len);
+    
     if((r_msg = chat_app__message__unpack(NULL, header.len, buffer + sizeof(header))) == NULL) {
         fprintf(stderr, "error unpacking message\n");           
         return -1;    
     }
 
     PrintMessage(r_msg);
-    pack_message(&s_msg, r_msg);
+    pack_message(&s_msg, r_msg, cookie);
     handle_msg_write(cookie, s_msg, epollfd, event, sockfd); 
 
     if(r_msg -> opt == CHAT_APP__MESSAGE__OPTION__LISTCLIENTS) {
@@ -403,7 +422,7 @@ handle_message(socket_cookie_t    *cookie,
     return 0;
 }
 
-    static int 
+static int 
 unpack_message(socket_cookie_t *cookie, 
         int epollfd, 
         struct epoll_event event,
@@ -413,7 +432,9 @@ unpack_message(socket_cookie_t *cookie,
     uint32_t            n_msg;
     uint8_t             retval;
     n_msg             = 0;
+    
     do{
+    
         if(cookie->pending_read_buffer_len < sizeof(header_obj.len)) {
             printf("unpack message header error\n");
             return 0;
@@ -450,11 +471,15 @@ unpack_message(socket_cookie_t *cookie,
                 free(cookie->pending_read_buffer);
                 break;
             }
+            
             else {
                 cookie->pending_read_buffer  = temp_buf;
             }
+            
             cookie->pending_read_buffer_len -= header_obj.len + sizeof(header_obj); 
+        
         }
+    
     } while(cookie->pending_read_buffer > 0);
 
     return n_msg;
@@ -518,7 +543,7 @@ int main(void)
     socket_cookie_t temp_socket_c;
     temp_socket_c.fd     = sockfd;
     event.data.ptr       = &temp_socket_c;
-    event.events         = EPOLLIN | EPOLLET;
+    event.events         = EPOLLIN;
 
     if (epoll_ctl(epollfd, EPOLL_CTL_ADD, sockfd, &event) < 0) {
         perror("Epoll error");
@@ -585,7 +610,7 @@ int main(void)
 
             else if(events[i].events & EPOLLIN) {
 
-                ((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer     = (uint8_t *)malloc(BUFFER_SIZE);
+                ((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer     = malloc(BUFFER_SIZE);
                 ((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer_len = 0;
 
                 int offset;
@@ -594,7 +619,6 @@ int main(void)
 			        offset = read(((socket_cookie_t *)events[i].data.ptr)  -> fd,
 			                ((socket_cookie_t *)events[i].data.ptr)        -> pending_read_buffer, 
 			                BUFFER_SIZE);
-                    printf("Length is %d \n", offset);
 
 
 			        if(offset <= 0 && (errno == EWOULDBLOCK || errno == EAGAIN)) {
@@ -602,10 +626,12 @@ int main(void)
 			        }
 
 			        if(errno == ECONNRESET || errno == EPOLLERR || errno == EPOLLHUP) {
-					    goto free_blk;
+					    break;   
 				    }
 
-			        if(offset == 0) {
+			        if(offset == 0){
+			            printf("NOPE HERE");
+			        
 			            goto free_blk;
 			        } 
 
@@ -616,7 +642,6 @@ int main(void)
 
                     if(tmp == NULL) {
                         printf("realloc fail \n");
-                        epoll_ctl(epollfd, EPOLL_CTL_DEL, ((socket_cookie_t *) events[i].data.ptr)->fd, NULL);
                         free(((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer);
                         break;
                     }
@@ -636,6 +661,9 @@ int main(void)
 				    break;
 
 			    } while(((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer_len > 0);
+            }
+            else if(events[i].events & EPOLLOUT) {
+            /*EPOLL OUT*/
             }
         }
     }   
