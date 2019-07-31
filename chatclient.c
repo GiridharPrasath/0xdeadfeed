@@ -165,7 +165,6 @@ check_connection_reset (uint8_t fd, uint16_t epfd)
 {
     if (errno == ECONNRESET) {
         printf("Server is down..\n");
-        //        close(fd);
         epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);        
         exit(1);
     }
@@ -241,8 +240,7 @@ handle_message_on_read (socket_cookie_t *cookie, uint16_t epfd)
 
         ret = handle_message(cookie, cookie->pending_read_buffer, header_obj.len);
         if (ret == -1) {
-            /* error : close socket */
-            close(cookie->fd);
+            epoll_ctl(epfd, EPOLL_CTL_DEL, cookie->fd, NULL);
             return -1;
         }
 
@@ -261,7 +259,6 @@ handle_message_on_read (socket_cookie_t *cookie, uint16_t epfd)
                     cookie->pending_read_buffer_len - header_obj.len - sizeof(header_obj));
             if(tmp == NULL){
                 printf("Some bytes are left unprocessed!, Could not reallocate memory\n");
-                //              close(cookie->fd);
                 epoll_ctl(epfd, EPOLL_CTL_DEL, cookie->fd, NULL);
                 free(cookie->pending_read_buffer);
                 break;
@@ -462,14 +459,11 @@ int main(int argc, char*argv[]){
                 ((socket_cookie_t *)events[k].data.ptr)->pending_write_buffer            = 0;
                 if (sentbytes < 0) {
                     printf("Nothing sent.\n");
-                    //                close(sockfd);
                     epoll_ctl(epfd, EPOLL_CTL_DEL, sockfd, NULL);
                     exit(1);
-                    /* Terminate socket */
                 }
                 printf("***%d bytes sent!***\n",sentbytes);
                 free(buf); // Free the allocated serialized buffer
-                //close(cookie->fd);
             } else {
                 //socket is ready
                 printf("Ready fd is socket fd\n");
@@ -519,7 +513,6 @@ int main(int argc, char*argv[]){
                             cookie->pending_read_buffer_len += nbytes;
                             n_processed = handle_message_on_read(cookie, epfd);
                         } else if (nbytes <= 0) {
-                            /* Socket close normal or error condition */
                             if (errno == EWOULDBLOCK){
                                 printf("Socket is readable but nothing reieved");
                             }
@@ -529,7 +522,7 @@ int main(int argc, char*argv[]){
                         }
                     } while(cookie->pending_read_buffer_len > 0);
                     printf("Processed %d bytes\n", n_processed);
-                    close(cookie->fd);
+                    epoll_ctl(epfd, EPOLL_CTL_DEL, cookie->fd, NULL);
                 }
                 else if (events[k].events == 0) {
                     printf("Socket closing\n");
@@ -541,7 +534,6 @@ int main(int argc, char*argv[]){
         }
         if (errno == ECONNRESET) {
             printf("Server terminated..\n");
-            //    close(sockfd);
             epoll_ctl(epfd, EPOLL_CTL_DEL, sockfd, NULL);
             exit(1);
         }
