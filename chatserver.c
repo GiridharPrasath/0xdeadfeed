@@ -259,8 +259,13 @@ handle_msg_write(socket_cookie_t    *cookie,
     fwrite(buf,len,1,stdout);
     
     /** '\0' '\n' remove from the packed message**/ 
-    msg.sourceip[strlen(msg.sourceip) - 1] = 0;
-    msg.sourceip[strlen(msg.sourceip) - 1] = 0;
+
+    if(msg.has_opt) {
+	if(msg.opt && msg.sourceip != NULL) {
+    	    msg.sourceip[strlen(msg.sourceip) - 1] = 0;
+    	    msg.sourceip[strlen(msg.sourceip) - 1] = 0;
+	}
+    }
     message_header_t message_header;
     uint32_t header_size = sizeof(message_header);
     /* adding message header */
@@ -506,7 +511,7 @@ unpack_message(socket_cookie_t *cookie,
             else {
                 cookie->pending_read_buffer  = temp_buf;
             }
-            
+          
             cookie->pending_read_buffer_len -= header_obj.len + sizeof(header_obj); 
         
         }
@@ -660,7 +665,11 @@ int main(void)
 				    }
 
 			        if(offset == 0){
-			            goto free_blk;
+		                    printf("Disconnected from %s\n", inet_ntoa(clients->address.sin_addr));
+		                    Conninfo *temp = check_del_clients(((socket_cookie_t *)events[i].data.ptr)->fd);
+		              	    delete_conn_info(&head, &temp);
+				    close(((socket_cookie_t *)events[i].data.ptr)->fd);
+				    break;
 			        } 
 
                     ((socket_cookie_t *)events[i].data.ptr)->pending_read_buffer_len     += offset;
@@ -679,19 +688,16 @@ int main(void)
 			        socket_cookie_t *cookie = ((socket_cookie_t *)events[i].data.ptr);
                     retmsgval               = unpack_message(cookie, epollfd, events[i], sockfd);
                     ((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer +=  offset;
+		    //shutdown(((socket_cookie_t *)events[i].data.ptr)->fd, SHUT_RDWR);
 
-                   free_blk:
-		            printf("Disconnected from %s\n", inet_ntoa(clients->address.sin_addr));
-		            Conninfo *temp = check_del_clients(((socket_cookie_t *)events[i].data.ptr)->fd);
-		            delete_conn_info(&head, &temp);
-				    close(((socket_cookie_t *)events[i].data.ptr)->fd);
-				    break;
-
-			    } while(((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer_len > 0);
-            }
-            else if(events[i].events & EPOLLOUT) {
+               } while(((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer_len > 0);
+            
+	    }
+            
+	    else if(events[i].events & EPOLLOUT) {
             /*EPOLL OUT*/
-            }
+            
+	    }
         }
     }   
 }
