@@ -118,7 +118,7 @@ static void
 parseMessage(const ChatApp__Message* msg)
 {
 
-    printf("---------------___-------------------\n");
+    printf("---------------___----------------\n");
     printf("Hostname: %s (%s)\n", msg->hostname, msg->sourceip);
     //  if (!strcmp(msg->sourceip,peerIp)){
     //      peerIp = malloc(sizeof(char)*15);
@@ -165,7 +165,6 @@ check_connection_reset (uint8_t fd, uint16_t epfd)
 {
     if (errno == ECONNRESET) {
         printf("Server is down..\n");
-        //        close(fd);
         epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);        
         exit(1);
     }
@@ -183,15 +182,12 @@ unpack_header (uint8_t            *buffer,
     ix += sizeof(header_out->len);
 
     header_out->type = ntohl(*(uint32_t *)(buffer + ix));
-    printf("type: %d\n", header_out->type);
     ix += sizeof(header_out->type);
 
     header_out->sender_id = ntohl(*(uint32_t *)(buffer + ix));
-    printf("s_id: %d\n", header_out->sender_id);
     ix += sizeof(header_out->sender_id);
 
     header_out->receiver_id = ntohl(*(uint32_t *)(buffer + ix));
-    printf("r_id: %d\n", header_out->receiver_id);
     ix += sizeof(header_out->receiver_id);
 
 }
@@ -202,13 +198,10 @@ handle_message (socket_cookie_t   *cookie,
                 uint32_t           buffer_len)
 {
     message_header_t   header;
-
     unpack_header(buffer, sizeof(message_header_t), &header);
 
     /* handler rest of message body */
     ChatApp__Message *r_msg;
-    printf("len %d\n", header.len); 
-    printf("buff addr: %x\n",buffer);
     r_msg = NULL;
 
     r_msg = chat_app__message__unpack(NULL, header.len, (buffer + header_size));
@@ -217,7 +210,6 @@ handle_message (socket_cookie_t   *cookie,
         return -1;
     }
     parseMessage(r_msg);
-    printf("msg len: %d\n", header.len);
 
     chat_app__message__free_unpacked(r_msg, NULL);
 
@@ -248,14 +240,14 @@ handle_message_on_read (socket_cookie_t *cookie, uint16_t epfd)
 
         ret = handle_message(cookie, cookie->pending_read_buffer, header_obj.len);
         if (ret == -1) {
-            /* error : close socket */
-            close(cookie->fd);
+            epoll_ctl(epfd, EPOLL_CTL_DEL, cookie->fd, NULL);
             return -1;
         }
 
         n_processed += header_size + header_obj.len; 
         /* message handled successfully */
         if (cookie->pending_read_buffer_len == (header_obj.len + sizeof(header_obj))) {
+            printf("one complete packet!\n");
             free(cookie->pending_read_buffer);
             cookie->pending_read_buffer_len = 0;
         } else {
@@ -267,7 +259,6 @@ handle_message_on_read (socket_cookie_t *cookie, uint16_t epfd)
                     cookie->pending_read_buffer_len - header_obj.len - sizeof(header_obj));
             if(tmp == NULL){
                 printf("Some bytes are left unprocessed!, Could not reallocate memory\n");
-                //              close(cookie->fd);
                 epoll_ctl(epfd, EPOLL_CTL_DEL, cookie->fd, NULL);
                 free(cookie->pending_read_buffer);
                 break;
@@ -343,8 +334,8 @@ int main(int argc, char*argv[]){
 
     addr.sin_family = AF_INET;
     addr.sin_port   = htons(PORT);
-    inet_pton(AF_INET, "10.145.0.245", &addr.sin_addr); 
-    //inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr); 
+    //inet_pton(AF_INET, "10.145.0.245", &addr.sin_addr); 
+    inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr); 
 
     if ((connfd = connect(sockfd,(struct sockaddr*)&addr,sizeof(addr))) < 0) {
         printf("Connection error \n Client couldn't connect.\n");
@@ -372,9 +363,10 @@ int main(int argc, char*argv[]){
             if (((socket_cookie_t *)events[k].data.ptr)->fd == 0) {
                 /*  stdin is ready */
                 int conn_status = check_connection(sockfd);
-                if(!conn_status){
+                if(conn_status < 0){
                     printf("conneciton pending...\n");
-                    continue;
+                    epoll_ctl(epfd, EPOLL_CTL_DEL, cookie->fd, NULL);
+                    break;
                 }
                 scanf("%hhd", &opt);
                 
@@ -467,14 +459,11 @@ int main(int argc, char*argv[]){
                 ((socket_cookie_t *)events[k].data.ptr)->pending_write_buffer            = 0;
                 if (sentbytes < 0) {
                     printf("Nothing sent.\n");
-                    //                close(sockfd);
                     epoll_ctl(epfd, EPOLL_CTL_DEL, sockfd, NULL);
                     exit(1);
-                    /* Terminate socket */
                 }
                 printf("***%d bytes sent!***\n",sentbytes);
                 free(buf); // Free the allocated serialized buffer
-                //close(cookie->fd);
             } else {
                 //socket is ready
                 printf("Ready fd is socket fd\n");
@@ -496,14 +485,14 @@ int main(int argc, char*argv[]){
                 }
                 if (events[k].events & EPOLLIN) {
                     uint8_t          nbytes;
-                    uint8_t          temp_buffer[MAXBUF];
+                    int              temp_buffer[MAXBUF];
                     uint8_t          n_processed;
 
                     printf("socket fd %u\n", cookie->fd);
                     cookie->pending_read_buffer_len = 0;
                     cookie->pending_read_buffer = NULL;
                     do {
-                        nbytes = read(cookie->fd, temp_buffer, sizeof(temp_buffer));
+                        nbytes = read(cookie->fd, temp_buffer, MAXBUF);
                         if (nbytes > 0) {
                             uint8_t *tmp;
                              
@@ -520,11 +509,10 @@ int main(int argc, char*argv[]){
                             }
                             memcpy(cookie->pending_read_buffer + cookie->pending_read_buffer_len,
                                     temp_buffer,
-                                    sizeof(temp_buffer));
+                                    nbytes);
                             cookie->pending_read_buffer_len += nbytes;
                             n_processed = handle_message_on_read(cookie, epfd);
                         } else if (nbytes <= 0) {
-                            /* Socket close normal or error condition */
                             if (errno == EWOULDBLOCK){
                                 printf("Socket is readable but nothing reieved");
                             }
@@ -532,8 +520,9 @@ int main(int argc, char*argv[]){
                             epoll_ctl(epfd, EPOLL_CTL_DEL, cookie->fd, NULL);
                             exit(1);
                         }
-                    } while(nbytes > 0);
-                    printf("Processed %d bytes", n_processed);
+                    } while(cookie->pending_read_buffer_len > 0);
+                    printf("Processed %d bytes\n", n_processed);
+                    epoll_ctl(epfd, EPOLL_CTL_DEL, cookie->fd, NULL);
                 }
                 else if (events[k].events == 0) {
                     printf("Socket closing\n");
@@ -545,7 +534,6 @@ int main(int argc, char*argv[]){
         }
         if (errno == ECONNRESET) {
             printf("Server terminated..\n");
-            //    close(sockfd);
             epoll_ctl(epfd, EPOLL_CTL_DEL, sockfd, NULL);
             exit(1);
         }
