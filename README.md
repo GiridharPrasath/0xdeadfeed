@@ -1,16 +1,20 @@
 # A basic chat app
 
-chat app created in C using epoll i/o multiplexing.
+chat app created in C for understanding epoll i/o multiplexing and google protobuf.
 
 ## run:
 
 (not POSIX only linux)
 
-`make`
+`git clone https://github.com/GiridharPrasath/0xdeadfeed`
 
-`./chatserver`
+`chmod +x install.sh`
 
-`./chatclient`
+`./install.sh`
 
-# WORK IN PROGRESS
+# TODOS:
+
+fix memory leaks
+
+solve warnings
 
