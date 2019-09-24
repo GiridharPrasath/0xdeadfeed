@@ -1,3 +1,7 @@
 *.o
 chatserver
 chatclient
+src/chatmessage.pb*
+bin/
+cscope.out
+*.out

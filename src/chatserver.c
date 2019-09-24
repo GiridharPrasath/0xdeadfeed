@@ -19,13 +19,13 @@
 typedef enum message_type_e {
     LIVE_USER_BROADCAST = 1,
     P2P_MESSAGE         = 2,
-} 
+}
 message_type_t;
 
 typedef struct conninfo {
     char    username[20];
     int     acceptfd;
-    
+
     struct  sockaddr_in address;
 
     struct  conninfo *next;
@@ -39,7 +39,7 @@ typedef struct message_header_s {
 
     uint32_t    sender_id;
     uint32_t    receiver_id;
-} 
+}
 message_header_t;
 
 typedef struct socket_cookie_s {
@@ -55,11 +55,11 @@ socket_cookie_t;
 
 Conninfo *head;
 
-static Conninfo* create_conn_info() 
+static Conninfo* create_conn_info()
 {
     head = malloc(sizeof(Conninfo));
 
-    if(head != NULL) {
+    if (head != NULL) {
         head->next = NULL;
         head->prev = NULL;
     }
@@ -67,9 +67,9 @@ static Conninfo* create_conn_info()
     return head;
 }
 
-static void add_conn_info(Conninfo** newconnect) 
+static void add_conn_info(Conninfo** newconnect)
 {
-    if(head == NULL) {
+    if (head == NULL) {
         head = create_conn_info();
         (*newconnect) = head;
     }
@@ -78,38 +78,37 @@ static void add_conn_info(Conninfo** newconnect)
         (*newconnect) = malloc(sizeof (Conninfo));
         head->next = (*newconnect);
         (*newconnect)->prev = head;
-        (*newconnect)->next = NULL;               
+        (*newconnect)->next = NULL;
     }
 }
-
-static void delete_conn_info(Conninfo **head, Conninfo **del) 
+static void delete_conn_info(Conninfo **head, Conninfo **del)
 {
     if ((*head) == NULL || (*del) == NULL){
-        return;  
+        return;
     }
 
     if ((*head) == (*del)) {
-        (*head) = (*del)->next;  
+        (*head) = (*del)->next;
     }
 
     if ((*del)->next != NULL) {
-        (*del)->next->prev = (*del)->prev;  
+        (*del)->next->prev = (*del)->prev;
     }
 
     if ((*del)->prev != NULL) {
-        (*del)->prev->next = (*del)->next;  
+        (*del)->prev->next = (*del)->next;
     }
 
     free((*del));
-    return;   
+    return;
 }
 
-static bool isconnected(Conninfo **cur, 
-        char      *ip) 
-{    
-    while((*cur)->next != NULL) {
+static bool isconnected(Conninfo **cur,
+                        char      *ip)
+{
+    while ((*cur)->next != NULL) {
 
-        if(!(strcmp(inet_ntoa((*cur)->address.sin_addr), ip))) {
+        if (!(strcmp(inet_ntoa((*cur)->address.sin_addr), ip))) {
             return true;
         }
 
@@ -120,16 +119,16 @@ static bool isconnected(Conninfo **cur,
     return false;
 }
 
-static Conninfo *check_del_clients(int acceptfd) 
+static Conninfo *check_del_clients(int acceptfd)
 {
     Conninfo *temp = head;
-   
+
     while(temp!= NULL) {
-     
-        if(temp->acceptfd == acceptfd) {
+
+        if (temp->acceptfd == acceptfd) {
             return temp;
         }
-        
+
         temp = temp->next;
     }
     return NULL;
@@ -137,18 +136,18 @@ static Conninfo *check_del_clients(int acceptfd)
 
 static void setnonblocking(int sock)
 {
-	int opts;
-	opts = fcntl(sock, F_GETFL);
+    int opts;
+    opts = fcntl(sock, F_GETFL);
 
-	if(opts < 0) {
-		perror("fcntl(sock, GETFL)");
-	}
+    if (opts < 0) {
+        perror("fcntl(sock, GETFL)");
+    }
 
-	opts = opts | O_NONBLOCK;
+    opts = opts | O_NONBLOCK;
 
-	if(fcntl(sock, F_SETFL, opts) < 0) {
-		perror("fcntl(sock, SETFL, opts)");
-	}
+    if (fcntl(sock, F_SETFL, opts) < 0) {
+        perror("fcntl(sock, SETFL, opts)");
+    }
 }
 
 static void check_non_blocking(int sock)
@@ -156,22 +155,22 @@ static void check_non_blocking(int sock)
     int opts;
     opts = fcntl(sock, F_GETFL);
 
-    if(opts < 0) {
+    if (opts < 0) {
         perror("fcntl(sock, GETFL)");
     }
 
-    if(opts & O_NONBLOCK) {
+    if (opts & O_NONBLOCK) {
         setnonblocking(sock);
     }
     return;
 }
 
-static int searchlist(char *ip) 
+static int searchlist(char *ip)
 {
     Conninfo *connect = head;
-    
-    while(connect != NULL) {
-        if(!strcmp(ip, inet_ntoa(connect->address.sin_addr))){
+
+    while (connect != NULL) {
+        if (!strcmp(ip, inet_ntoa(connect->address.sin_addr))) {
             return connect->acceptfd;
         }
         connect = connect -> next;
@@ -179,44 +178,44 @@ static int searchlist(char *ip)
     return 0;
 }
 
-static char* printList()  
-{   
+static char* printList()
+{
     Conninfo *connect = head;
     int      len      = 0;
     char     *ip;
-    
-    while (connect != NULL) {  
+
+    while (connect != NULL) {
         len    += strlen(inet_ntoa(connect->address.sin_addr));
         connect = connect->next;
         len++;
     }
-    
+
     connect = head;
     ip = malloc(len+1);
-    
-    while(connect != NULL) {
+
+    while (connect != NULL) {
         strcat(ip, inet_ntoa(connect->address.sin_addr));
         connect = connect -> next;
         strcat(ip, "\n");
     }
-    
+
     strcat(ip, "\0");
     return ip;
-}  
+}
 
 
-static void 
-pack_message(ChatApp__Message  *r_msg, 
-             ChatApp__Message  *msg) 
+static void
+pack_message(ChatApp__Message  *r_msg,
+             ChatApp__Message  *msg)
 {
     char szHostName[255];
 
     gethostname(szHostName, 255);
     r_msg->hostname = szHostName;
-    
-    if(msg->has_opt) {
 
-        switch(msg->opt) {
+    if (msg->has_opt) {
+
+        switch (msg->opt) {
 
             case CHAT_APP__MESSAGE__OPTION__LISTCLIENTS:
                 r_msg->texttosend   = printList();
@@ -238,33 +237,30 @@ pack_message(ChatApp__Message  *r_msg,
 
     r_msg->messagelength = strlen(r_msg->texttosend);
     r_msg->has_opt       = 1;
-    //free(r_msg->texttosend);
     return ;
 }
 
-    static void 
-handle_msg_write(socket_cookie_t    *cookie, 
-        ChatApp__Message     msg , 
-        int                  epollfd, 
-        struct epoll_event   sock_event,
-        int                  sockfd)
+static void
+handle_msg_write(socket_cookie_t     *cookie,
+                 ChatApp__Message     msg ,
+                 int                  epollfd,
+                 struct epoll_event   sock_event,
+                 int                  sockfd)
 {
     int len;
     void *buf = NULL;
     len = chat_app__message__get_packed_size(&msg);
     buf = realloc(buf, len);
 
-    chat_app__message__pack(&msg,buf);  
-    fprintf(stderr,"Writing %d serialized bytes to buffer\n",len); // See the length of message
+    chat_app__message__pack(&msg,buf);
+    fprintf(stderr,"Writing %d serialized bytes to buffer\n",len);
     fwrite(buf,len,1,stdout);
-    
-    /** '\0' '\n' remove from the packed message**/ 
 
-    if(msg.has_opt) {
-	if(msg.opt && msg.sourceip != NULL) {
-    	    msg.sourceip[strlen(msg.sourceip) - 1] = 0;
-    	    msg.sourceip[strlen(msg.sourceip) - 1] = 0;
-	}
+    if (msg.has_opt) {
+        if (msg.opt && msg.sourceip != NULL) {
+            msg.sourceip[strlen(msg.sourceip) - 1] = 0;
+            msg.sourceip[strlen(msg.sourceip) - 1] = 0;
+        }
     }
     message_header_t message_header;
     uint32_t header_size = sizeof(message_header);
@@ -291,21 +287,21 @@ handle_msg_write(socket_cookie_t    *cookie,
     memcpy(cookie->pending_write_buffer, send_buf, total_len);
 
     cookie->pending_write_buffer_len = total_len;
-    uint8_t sentbytes = 0; 
-    
-    do{
-        if(!msg.has_opt) {
+    uint8_t sentbytes = 0;
+
+    do {
+        if (!msg.has_opt) {
             perror("message pack error\n");
             break;
         }
-        
-        if(msg.opt == CHAT_APP__MESSAGE__OPTION__LISTCLIENTS) {
+
+        if (msg.opt == CHAT_APP__MESSAGE__OPTION__LISTCLIENTS) {
             sentbytes = write(cookie->fd, cookie->pending_write_buffer, cookie->pending_write_buffer_len);
         }
-        
+
         else {
             int accept;
-            if((accept = searchlist(msg.sourceip)) != 0) {
+            if ((accept = searchlist(msg.sourceip)) != 0) {
                 sentbytes = write(accept, cookie->pending_write_buffer, cookie->pending_write_buffer_len);
             }
             else {
@@ -314,19 +310,18 @@ handle_msg_write(socket_cookie_t    *cookie,
             }
         }
 
-        if(sentbytes < 0){
+        if (sentbytes < 0) {
             break;
         }
 
-        if(sentbytes >= cookie->pending_write_buffer_len) { 
+        if (sentbytes >= cookie->pending_write_buffer_len) {
             free(cookie->pending_write_buffer);
             cookie->pending_write_buffer_len = 0;
             break;
-        } 
-        
-        else 
-        {
-            cookie->pending_write_buffer_len   -= sentbytes;       
+        }
+
+        else {
+            cookie->pending_write_buffer_len   -= sentbytes;
 
             memmove(cookie->pending_write_buffer,
                     cookie->pending_write_buffer + sentbytes,
@@ -337,27 +332,27 @@ handle_msg_write(socket_cookie_t    *cookie,
             tmp = realloc(cookie->pending_write_buffer,
                     cookie->pending_write_buffer_len);
 
-            if(tmp == NULL) {
+            if (tmp == NULL) {
                 printf("Could not reallocate memory\n");
                 epoll_ctl(epollfd, EPOLL_CTL_DEL, cookie->fd, NULL);
                 free(cookie->pending_read_buffer);
                 break;
 
-            } 
-            else{
+            }
+            else {
                 cookie->pending_write_buffer = tmp;
             }
         }
 
     } while(cookie->pending_write_buffer_len > 0);
-    
+
     sock_event.events |= EPOLLIN;
     epoll_ctl(epollfd, EPOLL_CTL_MOD, cookie->fd, &sock_event);
 
 }
 
 
-static void 
+static void
 PrintMessage(const ChatApp__Message* msg) {
 
     if (msg->destip != NULL) {
@@ -392,10 +387,10 @@ PrintMessage(const ChatApp__Message* msg) {
 
 }
 
-    static void 
+static void
 unpack_header(uint8_t           *buffer,
-        uint32_t           len,
-        message_header_t  *header )
+              uint32_t           len,
+              message_header_t  *header )
 {
     uint32_t inc        = 0;
     uint32_t temp;
@@ -403,55 +398,55 @@ unpack_header(uint8_t           *buffer,
     inc                += sizeof(header->len);
 
     printf("len %d \n", header->len);
-    memcpy(&temp, buffer+inc, 4); 
+    memcpy(&temp, buffer+inc, 4);
 
     header->type        = ntohl(temp);
-    inc                += sizeof(header->type);   
+    inc                += sizeof(header->type);
 
     printf("type %d \n", header->type);
-    memcpy(&temp, buffer+inc, 4); 
+    memcpy(&temp, buffer+inc, 4);
 
     header->sender_id   = ntohl(temp);
-    inc                += sizeof(header->sender_id);   
+    inc                += sizeof(header->sender_id);
 
     printf("send %d \n", header->sender_id);
-    memcpy(&temp, buffer+inc, 4); 
+    memcpy(&temp, buffer+inc, 4);
 
     header->receiver_id = ntohl(temp);
-    inc                += sizeof(header->receiver_id);   
+    inc                += sizeof(header->receiver_id);
 
     printf("recv %d \n", header->receiver_id);
 }
 
-static uint8_t 
+static uint8_t
 handle_message(socket_cookie_t    *cookie,
-        uint8_t            *buffer,
-        uint32_t            buffer_len,
-        int                 epollfd,
-        struct epoll_event  event,
-        int                 sockfd) 
+               uint8_t            *buffer,
+               uint32_t            buffer_len,
+               int                 epollfd,
+               struct epoll_event  event,
+               int                 sockfd)
 {
     message_header_t header;
     unpack_header(buffer, sizeof(message_header_t), &header);
     ChatApp__Message *r_msg;
     ChatApp__Message  s_msg = CHAT_APP__MESSAGE__INIT;
     printf("buffer len %d \n", header.len);
-    
-    if((r_msg = chat_app__message__unpack(NULL, header.len, buffer + sizeof(header))) == NULL) {
-        fprintf(stderr, "error unpacking message\n");           
-        return -1;    
+
+    if ((r_msg = chat_app__message__unpack(NULL, header.len, buffer + sizeof(header))) == NULL) {
+        fprintf(stderr, "error unpacking message\n");
+        return -1;
     }
 
     PrintMessage(r_msg);
     pack_message(&s_msg, r_msg);
-    handle_msg_write(cookie, s_msg, epollfd, event, sockfd); 
+    handle_msg_write(cookie, s_msg, epollfd, event, sockfd);
 
-    if(r_msg -> opt == CHAT_APP__MESSAGE__OPTION__LISTCLIENTS) {
+    if (r_msg -> opt == CHAT_APP__MESSAGE__OPTION__LISTCLIENTS) {
         chat_app__message__free_unpacked(r_msg, NULL);
         return 1;
     }
 
-    if(r_msg -> opt == CHAT_APP__MESSAGE__OPTION__CHAT) {
+    if (r_msg -> opt == CHAT_APP__MESSAGE__OPTION__CHAT) {
         chat_app__message__free_unpacked(r_msg, NULL);
         return 2;
     }
@@ -459,36 +454,36 @@ handle_message(socket_cookie_t    *cookie,
     return 0;
 }
 
-static int 
-unpack_message(socket_cookie_t *cookie, 
-        int epollfd, 
-        struct epoll_event event,
-        int sockfd) 
+static int
+unpack_message(socket_cookie_t *cookie,
+               int              epollfd,
+               struct           epoll_event event,
+               int              sockfd)
 {
     message_header_t    header_obj;
     uint32_t            n_msg;
-    uint8_t             retval;
+    uint32_t            retval;
     n_msg             = 0;
-    
+
     do{
-    
-        if(cookie->pending_read_buffer_len < sizeof(header_obj.len)) {
+
+        if (cookie->pending_read_buffer_len < sizeof(header_obj.len)) {
             return 0;
         }
 
         header_obj.len = ntohl(*(uint32_t *)cookie->pending_read_buffer);
 
-        if(cookie->pending_read_buffer_len < header_obj.len + sizeof(header_obj)) {
-            return n_msg;      
+        if (cookie->pending_read_buffer_len < header_obj.len + sizeof(header_obj)) {
+            return n_msg;
         }
 
         retval = handle_message(cookie, cookie->pending_read_buffer, header_obj.len, epollfd, event, sockfd);
 
         n_msg   += 1;
 
-        if(cookie->pending_read_buffer_len == (header_obj.len + sizeof(header_obj))) {
-            free(cookie->pending_read_buffer);        
-            cookie->pending_read_buffer_len = 0;    
+        if (cookie->pending_read_buffer_len == (header_obj.len + sizeof(header_obj))) {
+            free(cookie->pending_read_buffer);
+            cookie->pending_read_buffer_len = 0;
         }
 
         else {
@@ -501,29 +496,28 @@ unpack_message(socket_cookie_t *cookie,
             temp_buf    = realloc(cookie->pending_read_buffer,
                     cookie->pending_read_buffer_len - header_obj.len - sizeof(header_obj));
 
-            if(temp_buf == NULL) {
+            if (temp_buf == NULL) {
                 printf("realloc fail at processing new msg\n");
                 epoll_ctl(epollfd, EPOLL_CTL_DEL, cookie->fd, NULL);
                 free(cookie->pending_read_buffer);
                 break;
             }
-            
+
             else {
                 cookie->pending_read_buffer  = temp_buf;
             }
-          
-            cookie->pending_read_buffer_len -= header_obj.len + sizeof(header_obj); 
-        
+
+            cookie->pending_read_buffer_len -= header_obj.len + sizeof(header_obj);
+
         }
-    
+
     } while(cookie->pending_read_buffer > 0);
 
     return n_msg;
 }
 
-static int initserver(Conninfo * server) 
+static int initserver(Conninfo * server)
 {
-
     int sockfd;
 
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
@@ -560,9 +554,8 @@ static int initserver(Conninfo * server)
     return sockfd;
 }
 
-int main(void) 
+int main(void)
 {
-
     head = NULL;
     struct epoll_event event,events[MAX_CLIENTS];
 
@@ -571,7 +564,7 @@ int main(void)
     Conninfo *clients;
 
     int epollfd = epoll_create(0xbeef);
-    int sockfd  = initserver( &server);
+    int sockfd  = initserver(&server);
 
     setnonblocking(sockfd);
     check_non_blocking(sockfd);
@@ -595,34 +588,34 @@ int main(void)
         int nfds;
         nfds = epoll_wait(epollfd, events, MAXEVENTS, -1);
 
-        for(int i =0; i < nfds;i++) {
+        for (int i =0; i < nfds;i++) {
 
-            fd = ((socket_cookie_t *)events[i].data.ptr)->fd;      
+            fd = ((socket_cookie_t *)events[i].data.ptr)->fd;
             int acceptfd;
 
             if (fd == sockfd) {
 
                 add_conn_info(&clients);
                 socklen_t addrlen         = (socklen_t) sizeof(const struct sockaddr_in);
-                acceptfd                  = accept(sockfd, 
-                        (struct sockaddr *)&clients->address, 
-                        &addrlen);    
+                acceptfd                  = accept(sockfd,
+                                                   (struct sockaddr *)&clients->address,
+                                                   &addrlen);
 
                 clients->acceptfd = acceptfd;
-                if(acceptfd < 0) {
+                if (acceptfd < 0) {
                     perror("Accept failed\n");
                     continue;
                 }
 
-                char *cliaddr; 
+                char *cliaddr;
                 cliaddr = inet_ntoa(clients->address.sin_addr);
 
-                /*    if(isconnected(&clients, cliaddr)) {
-                      delete_conn_info(&clients);
-                      perror("Already connected");
-                      close(acceptfd);
-                      continue;
-                      } */
+                if (isconnected(&clients, cliaddr)) {
+                    delete_conn_info(&head, &clients);
+                    close(acceptfd);
+                    perror("Already connected");
+                    continue;
+                }
 
                 printf("Accepted %s\n", inet_ntoa(clients->address.sin_addr));
                 setnonblocking(acceptfd);
@@ -635,69 +628,63 @@ int main(void)
                 epoll_ctl(epollfd, EPOLL_CTL_ADD, sock_cookie[acceptfd].fd, &event);
 
                 if (acceptfd < 0) {
-                    if (errno != EAGAIN && 
-                            errno != ECONNABORTED && 
-                            errno != EPROTO && errno != EINTR) {
+                    if (errno != EAGAIN &&
+                        errno != ECONNABORTED &&
+                        errno != EPROTO && errno != EINTR) {
                         perror("accept");
                     }
                 }
             }
 
-            else if(events[i].events & EPOLLIN) {
+            else if (events[i].events & EPOLLIN) {
 
                 ((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer     = malloc(BUFFER_SIZE);
                 ((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer_len = 0;
 
                 int offset;
 
-			    do {
-			        offset = read(((socket_cookie_t *)events[i].data.ptr)  -> fd,
-			                ((socket_cookie_t *)events[i].data.ptr)        -> pending_read_buffer, 
-			                BUFFER_SIZE);
+                do {
+                    offset = read(((socket_cookie_t *)events[i].data.ptr)-> fd,
+                            ((socket_cookie_t *)events[i].data.ptr)-> pending_read_buffer,
+                            BUFFER_SIZE);
 
 
-			        if(offset <= 0 && (errno == EWOULDBLOCK || errno == EAGAIN)) {
-			            break;    
-			        }
+                    if (offset <= 0 &&
+                       (errno == EWOULDBLOCK || errno == EAGAIN ||
+                        errno == ECONNRESET || errno == EPOLLERR ||
+                        errno == EPOLLHUP)) {
+                        break;
+                    }
 
-			        if(errno == ECONNRESET || errno == EPOLLERR || errno == EPOLLHUP) {
-					    break;   
-				    }
-
-			        if(offset == 0){
-		                    printf("Disconnected from %s\n", inet_ntoa(clients->address.sin_addr));
-		                    Conninfo *temp = check_del_clients(((socket_cookie_t *)events[i].data.ptr)->fd);
-		              	    delete_conn_info(&head, &temp);
-				    close(((socket_cookie_t *)events[i].data.ptr)->fd);
-				    break;
-			        } 
+                    if (offset == 0) {
+                        printf("Disconnected from %s\n", inet_ntoa(clients->address.sin_addr));
+                        Conninfo *temp = check_del_clients(((socket_cookie_t *)events[i].data.ptr)->fd);
+                        delete_conn_info(&head, &temp);
+                        close(((socket_cookie_t *)events[i].data.ptr)->fd);
+                        break;
+                    }
 
                     ((socket_cookie_t *)events[i].data.ptr)->pending_read_buffer_len     += offset;
 
-			        uint8_t *tmp =  (uint8_t *)realloc(((socket_cookie_t *)events[i].data.ptr)->pending_read_buffer, 
-			                ((socket_cookie_t *)events[i].data.ptr)->pending_read_buffer_len);
+                    uint8_t *tmp =  (uint8_t *)realloc(((socket_cookie_t *)events[i].data.ptr)->pending_read_buffer,
+                            ((socket_cookie_t *)events[i].data.ptr)->pending_read_buffer_len);
 
-                    if(tmp == NULL) {
+                    if (tmp == NULL) {
                         printf("realloc fail \n");
                         free(((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer);
                         break;
                     }
                     ((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer  =  tmp;
-
-			        uint32_t        retmsgval;
-			        socket_cookie_t *cookie = ((socket_cookie_t *)events[i].data.ptr);
+                    
+                    socket_cookie_t *cookie = ((socket_cookie_t *)events[i].data.ptr);
+                    
+                    uint32_t retmsgval;
                     retmsgval               = unpack_message(cookie, epollfd, events[i], sockfd);
                     ((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer +=  offset;
-		    //shutdown(((socket_cookie_t *)events[i].data.ptr)->fd, SHUT_RDWR);
+                    //shutdown(((socket_cookie_t *)events[i].data.ptr)->fd, SHUT_RDWR);
 
-               } while(((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer_len > 0);
-            
-	    }
-            
-	    else if(events[i].events & EPOLLOUT) {
-            /*EPOLL OUT*/
-            
-	    }
+                } while(((socket_cookie_t *) events[i].data.ptr)->pending_read_buffer_len > 0);
+            }
         }
-    }   
+    }
 }
