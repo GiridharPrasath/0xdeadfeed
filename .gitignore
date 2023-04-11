@@ -5,3 +5,7 @@ src/chatmessage.pb*
 bin/
 cscope.out
 *.out
+/.idea/.gitignore
+/.idea/sonarlint/issuestore/index.pb
+/.idea/misc.xml
+/.idea/vcs.xml

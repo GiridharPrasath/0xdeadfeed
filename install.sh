@@ -1,8 +1,7 @@
 #!/bin/bash
 
 if [[ `uname -s` != 'Linux' ]] ; then
-    echo "[*] Only linux is supported"
-    exit 1
+    echo "[*] Primarily supported in linux, install required deps to port"
 fi
 
 
@@ -23,4 +22,3 @@ fi
 echo "[*] Compilation starts"
 make
 echo "[*] Compilation done.check bin/"
-

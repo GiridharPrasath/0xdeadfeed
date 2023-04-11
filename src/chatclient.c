@@ -19,7 +19,6 @@
 
 #define PORT        7000
 #define MAXBUF      1024
-#define noproc      2
 #define header_size 16
 
 char    hostname[MAXBUF];
